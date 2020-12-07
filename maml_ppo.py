@@ -22,7 +22,6 @@ parser.add_argument('--level', type=str)
 parser.add_argument('--run_name', type=str)
 parser.add_argument('--render', type=bool)
 parser.add_argument('--load_saved', type=bool)
-parser.add_argument('--save_model', type=bool)
 args = parser.parse_args()
 
 if args.level in sonic_util.LEVELS1:
@@ -30,7 +29,7 @@ if args.level in sonic_util.LEVELS1:
 elif args.level in sonic_util.LEVELS2:
     game = 'SonicTheHedgehog2-Genesis'
 elif args.level in sonic_util.LEVELS3:
-    game = 'SonicAndKnuckles3-Genesis'
+    game = 'SonicAndKnuckles-Genesis'
 
 curr_time = str(datetime.datetime.now()).replace(' ', '_')
 writer = SummaryWriter(log_dir='../runs/{}_{}_{}'.format(args.level, args.run_name, curr_time))
@@ -150,14 +149,13 @@ class ActorCritic(nn.Module):
         
 class PPO:
     def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, 
-                 K_epochs, eps_clip, net_batch_size, load_saved, entropy_loss_weight):
+                 K_epochs, eps_clip, net_batch_size, load_saved):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
         self.eps_clip = eps_clip
         self.K_epochs = K_epochs
         self.net_batch_size = net_batch_size
-        self.entropy_loss_weight = entropy_loss_weight
         
         self.policy = ActorCritic(state_dim, action_dim, n_latent_var).to(device)
         if load_saved:
@@ -211,11 +209,7 @@ class PPO:
                 advantages = rewards_batch - state_values.detach()
                 surr1 = ratios * advantages
                 surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-                loss = (
-                    -torch.min(surr1, surr2) 
-                    + 0.5 * self.MseLoss(state_values, rewards_batch) 
-                    - self.entropy_loss_weight * dist_entropy
-                )
+                loss = -torch.min(surr1, surr2) + 0.5 * self.MseLoss(state_values, rewards_batch) - 0.01 * dist_entropy
                 total_loss += loss.mean().item()
                  
                 # take gradient step
@@ -244,13 +238,12 @@ def main():
     max_timesteps = 2250         # max timesteps in one episode
     n_latent_var = 64           # number of variables in hidden layer
     update_timestep = 9000      # update policy every n timesteps
-    lr = 0.001
+    lr = 0.0001
     batch_size = 400
     betas = (0.9, 0.999)
     gamma = 0.99                # discount factor
     K_epochs = 1                # update policy for K epochs
     eps_clip = 0.2              # clip parameter for PPO
-    entropy_loss_weight = 0.1   # weight for entropy term in loss
     random_seed = None
     #############################################
     
@@ -260,7 +253,7 @@ def main():
 
     memory = Memory()
     ppo = PPO(state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, 
-              eps_clip, batch_size, args.load_saved, entropy_loss_weight)
+              eps_clip, batch_size, args.load_saved)
     print(lr,betas)
     
     # logging variables
@@ -300,13 +293,6 @@ def main():
                 break
                 
         avg_length += t
-
-        # save model if we beat best reward
-        if args.save_model and running_reward > best_reward:
-            print("########## Best so far ##########")
-            torch.save(ppo.policy.state_dict(), 'preTrained/PPO_{}.pth'.format(env_name))
-            best_reward = running_reward
-            break
             
         # logging
         if i_episode % log_interval == 0:
@@ -319,6 +305,13 @@ def main():
 
             running_reward = 0
             avg_length = 0
+        
+        # save model if we beat best reward
+        if running_reward > best_reward:
+            print("########## Best so far ##########")
+            torch.save(ppo.policy.state_dict(), 'preTrained/PPO_{}.pth'.format(env_name))
+            best_reward = running_reward
+            break
         
         if total_timestep > total_timestep_limit:
             print("########## Reached timestep limit ##########")
