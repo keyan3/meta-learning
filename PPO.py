@@ -20,9 +20,10 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 parser = argparse.ArgumentParser()
 parser.add_argument('--level', type=str)
 parser.add_argument('--run_name', type=str)
-parser.add_argument('--render', type=bool)
-parser.add_argument('--load_saved', type=bool)
-parser.add_argument('--save_model', type=bool)
+parser.add_argument('--render', dest='render', action='store_true')
+parser.add_argument('--load_saved', dest='load_saved', action='store_true')
+parser.add_argument('--save_model', dest='save_model', action='store_true')
+parser.add_argument('--dry_run', dest='dry_run', action='store_true')
 args = parser.parse_args()
 
 if args.level in sonic_util.LEVELS1:
@@ -31,9 +32,6 @@ elif args.level in sonic_util.LEVELS2:
     game = 'SonicTheHedgehog2-Genesis'
 elif args.level in sonic_util.LEVELS3:
     game = 'SonicAndKnuckles3-Genesis'
-
-curr_time = str(datetime.datetime.now()).replace(' ', '_')
-writer = SummaryWriter(log_dir='../runs/{}_{}_{}'.format(args.level, args.run_name, curr_time))
 
 class Memory:
     def __init__(self):
@@ -147,10 +145,11 @@ class ActorCritic(nn.Module):
     def eval_mode(self):
         self.action_cnn.eval()
         self.value_cnn.eval()
-        
+
 class PPO:
     def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, 
-                 K_epochs, eps_clip, net_batch_size, load_saved, entropy_loss_weight):
+                 K_epochs, eps_clip, net_batch_size, load_saved, entropy_loss_weight, 
+                 meta_policy=None, meta_policy_lr=None):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
@@ -158,17 +157,32 @@ class PPO:
         self.K_epochs = K_epochs
         self.net_batch_size = net_batch_size
         self.entropy_loss_weight = entropy_loss_weight
-        
+
         self.policy = ActorCritic(state_dim, action_dim, n_latent_var).to(device)
         if load_saved:
             self.policy.load_state_dict(torch.load('preTrained/PPO_{}.pth'.format(args.level)))
+        elif meta_policy:
+            self.meta_policy = meta_policy
+            self.policy.load_state_dict(meta_policy.state_dict())
+            self.meta_optimizer = torch.optim.Adam(self.meta_policy.parameters(), lr=meta_policy_lr, betas=betas)
+        
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
+        
         self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
         
         self.MseLoss = nn.MSELoss()
     
-    def update(self, memory):   
+    def update_meta(self, memory, end_of_meta_iter):
+
+        update(memory, meta=True)
+
+        if end_of_meta_iter:
+            print('Updating meta-policy')
+            self.meta_optimizer.step()
+            self.meta_optimizer.zero_grad()
+
+    def update(self, memory, meta=False):   
         # Monte Carlo estimate of state rewards:
         rewards = []
         discounted_reward = 0
@@ -212,24 +226,28 @@ class PPO:
                 surr1 = ratios * advantages
                 surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
                 loss = (
-                    -torch.min(surr1, surr2) 
-                    + 0.5 * self.MseLoss(state_values, rewards_batch) 
-                    - self.entropy_loss_weight * dist_entropy
+                     -torch.min(surr1, surr2) 
+                     + 0.5 * self.MseLoss(state_values, rewards_batch) 
+                     - self.entropy_loss_weight * dist_entropy
                 )
                 total_loss += loss.mean().item()
                  
                 # take gradient step
-                self.optimizer.zero_grad()
-                loss.mean().backward()
-                self.optimizer.step()
+                if meta:
+                    raise NotImplementedError
+                    # collect gradient of loss w.r.t original theta
+                else:
+                    self.optimizer.zero_grad()
+                    loss.mean().backward()
+                    self.optimizer.step()
             
             print('Loss: ', total_loss)
         
         # Copy new weights into old policy:
         self.policy_old.load_state_dict(self.policy.state_dict())
-
         self.policy.eval_mode()
-        
+
+
 def main():
     ############## Hyperparameters ##############
     env = make(game=game, state=args.level)
@@ -238,14 +256,13 @@ def main():
     sonic_actions = get_sonic_specific_actions()
     render = args.render
     solved_reward = 4e3         # stop training if avg_reward > solved_reward
-    log_interval = 1           # print avg reward in the interval
-    total_timestep_limit = 1000000
-    max_episodes = 50000        # max training episodes
-    max_timesteps = 2250         # max timesteps in one episode
+    log_interval = 1            # print avg reward in the interval
+    max_episodes = 500          # max training episodes
+    max_timesteps = 3000        # max timesteps in one episode
     n_latent_var = 64           # number of variables in hidden layer
-    update_timestep = 9000      # update policy every n timesteps
-    lr = 0.001
-    batch_size = 400
+    update_timestep = 1000      # update policy every n timesteps
+    lr = 0.0001
+    batch_size = 200
     betas = (0.9, 0.999)
     gamma = 0.99                # discount factor
     K_epochs = 1                # update policy for K epochs
@@ -253,6 +270,10 @@ def main():
     entropy_loss_weight = 0.1   # weight for entropy term in loss
     random_seed = None
     #############################################
+
+    if not args.dry_run:
+        curr_time = str(datetime.datetime.now()).replace(' ', '_')
+        writer = SummaryWriter(log_dir='../runs/{}_{}_{}'.format(args.level, args.run_name, curr_time))
     
     if random_seed:
         torch.manual_seed(random_seed)
@@ -261,7 +282,7 @@ def main():
     memory = Memory()
     ppo = PPO(state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, 
               eps_clip, batch_size, args.load_saved, entropy_loss_weight)
-    print(lr,betas)
+    print(lr, betas)
     
     # logging variables
     running_reward = 0
@@ -279,7 +300,6 @@ def main():
             
             # Running policy_old:
             action = ppo.policy_old.act(state, memory)
-            # print(action)
             state, reward, done, _ = env.step(sonic_actions[action].astype(int))
             
             # Saving reward and is_terminal:
@@ -307,22 +327,19 @@ def main():
             torch.save(ppo.policy.state_dict(), 'preTrained/PPO_{}.pth'.format(env_name))
             best_reward = running_reward
             break
-            
+
         # logging
         if i_episode % log_interval == 0:
             avg_length = int(avg_length/log_interval)
             running_reward = int((running_reward/log_interval))
             
             print('Episode {} \t avg length: {} \t reward: {}'.format(i_episode, avg_length, running_reward))
-            writer.add_scalar('Avg_Reward', running_reward, i_episode)
-            writer.flush()
+            if not args.dry_run:
+                writer.add_scalar('Avg_Reward', running_reward, i_episode)
+                writer.flush()
 
             running_reward = 0
             avg_length = 0
-        
-        if total_timestep > total_timestep_limit:
-            print("########## Reached timestep limit ##########")
-            break
             
 if __name__ == '__main__':
     main()

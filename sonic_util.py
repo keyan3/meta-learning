@@ -33,3 +33,10 @@ def get_sonic_specific_actions():
         _actions.append(arr)
     
     return _actions
+
+def sample_level_batch():
+    return [
+        LEVELS1[np.random.randint(len(LEVELS1))],
+        LEVELS2[np.random.randint(len(LEVELS2))],
+        LEVELS3[np.random.randint(len(LEVELS3))]
+    ]
