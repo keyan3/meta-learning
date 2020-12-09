@@ -49,7 +49,7 @@ class Memory:
         del self.is_terminals[:]
 
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, n_latent_var):
+    def __init__(self, state_dim, action_dim):
         super(ActorCritic, self).__init__()
 
         #actor
@@ -147,9 +147,8 @@ class ActorCritic(nn.Module):
         self.value_cnn.eval()
 
 class PPO:
-    def __init__(self, state_dim, action_dim, n_latent_var, lr, betas, gamma, 
-                 K_epochs, eps_clip, net_batch_size, load_saved, entropy_loss_weight, 
-                 meta_policy=None, meta_policy_lr=None):
+    def __init__(self, state_dim, action_dim, lr, betas, gamma, 
+                 K_epochs, eps_clip, net_batch_size, load_saved, entropy_loss_weight):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
@@ -158,29 +157,16 @@ class PPO:
         self.net_batch_size = net_batch_size
         self.entropy_loss_weight = entropy_loss_weight
 
-        self.policy = ActorCritic(state_dim, action_dim, n_latent_var).to(device)
+        self.policy = ActorCritic(state_dim, action_dim).to(device)
         if load_saved:
-            self.policy.load_state_dict(torch.load('preTrained/PPO_{}.pth'.format(args.level)))
-        elif meta_policy:
-            self.meta_policy = meta_policy
-            self.policy.load_state_dict(meta_policy.state_dict())
-            self.meta_optimizer = torch.optim.Adam(self.meta_policy.parameters(), lr=meta_policy_lr, betas=betas)
+            self.policy.load_state_dict(torch.load('preTrained/meta_PPO.pth'.format(args.level)))
         
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
         
-        self.policy_old = ActorCritic(state_dim, action_dim, n_latent_var).to(device)
+        self.policy_old = ActorCritic(state_dim, action_dim).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
         
         self.MseLoss = nn.MSELoss()
-    
-    def update_meta(self, memory, end_of_meta_iter):
-
-        update(memory, meta=True)
-
-        if end_of_meta_iter:
-            print('Updating meta-policy')
-            self.meta_optimizer.step()
-            self.meta_optimizer.zero_grad()
 
     def update(self, memory, meta=False):   
         # Monte Carlo estimate of state rewards:
@@ -231,15 +217,10 @@ class PPO:
                      - self.entropy_loss_weight * dist_entropy
                 )
                 total_loss += loss.mean().item()
-                 
-                # take gradient step
-                if meta:
-                    raise NotImplementedError
-                    # collect gradient of loss w.r.t original theta
-                else:
-                    self.optimizer.zero_grad()
-                    loss.mean().backward()
-                    self.optimizer.step()
+
+                self.optimizer.zero_grad()
+                loss.mean().backward()
+                self.optimizer.step()
             
             print('Loss: ', total_loss)
         
@@ -255,14 +236,12 @@ def main():
     action_dim = 8
     sonic_actions = get_sonic_specific_actions()
     render = args.render
-    solved_reward = 4e3         # stop training if avg_reward > solved_reward
     log_interval = 1            # print avg reward in the interval
     max_episodes = 500          # max training episodes
     max_timesteps = 3000        # max timesteps in one episode
-    n_latent_var = 64           # number of variables in hidden layer
-    update_timestep = 1000      # update policy every n timesteps
+    update_timestep = 9000      # update policy every n timesteps
     lr = 0.0001
-    batch_size = 200
+    batch_size = 400            # 200 for ResNet, 400 for basic conv
     betas = (0.9, 0.999)
     gamma = 0.99                # discount factor
     K_epochs = 1                # update policy for K epochs
@@ -280,7 +259,7 @@ def main():
         env.seed(random_seed)
 
     memory = Memory()
-    ppo = PPO(state_dim, action_dim, n_latent_var, lr, betas, gamma, K_epochs, 
+    ppo = PPO(state_dim, action_dim, lr, betas, gamma, K_epochs, 
               eps_clip, batch_size, args.load_saved, entropy_loss_weight)
     print(lr, betas)
     
