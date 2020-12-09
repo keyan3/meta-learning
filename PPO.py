@@ -24,6 +24,7 @@ parser.add_argument('--render', dest='render', action='store_true')
 parser.add_argument('--load_saved', dest='load_saved', action='store_true')
 parser.add_argument('--save_model', dest='save_model', action='store_true')
 parser.add_argument('--dry_run', dest='dry_run', action='store_true')
+parser.add_argument('--resnet', dest='resnet', action='store_true')
 args = parser.parse_args()
 
 if args.level in sonic_util.LEVELS1:
@@ -53,47 +54,51 @@ class ActorCritic(nn.Module):
         super(ActorCritic, self).__init__()
 
         #actor
-        #self.action_cnn = nn.Sequential(*list(resnet18(pretrained=False).children())[:-1])
-        self.action_cnn = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=9, stride=2, padding=3),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, kernel_size=5, stride=2, padding=3),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=2),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=2),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Flatten(),
-            nn.Dropout(),
-            nn.Linear(7680, 512),
-            nn.ReLU()
-        )
+        if args.resnet:
+            self.action_cnn = nn.Sequential(*list(resnet18(pretrained=False).children())[:-1])
+        else:
+            self.action_cnn = nn.Sequential(
+                nn.Conv2d(3, 32, kernel_size=9, stride=2, padding=3),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Conv2d(32, 64, kernel_size=5, stride=2, padding=3),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=2),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=2),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Flatten(),
+                nn.Dropout(),
+                nn.Linear(7680, 512),
+                nn.ReLU()
+            )
         self.action_linear = nn.Linear(512, action_dim)
         
         # critic
-        #self.value_cnn = nn.Sequential(*list(resnet18(pretrained=False).children())[:-1])
-        self.value_cnn = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=9, stride=2, padding=3),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, kernel_size=5, stride=2, padding=3),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=2),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=2),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Flatten(),
-            nn.Dropout(),
-            nn.Linear(7680, 512),
-            nn.ReLU()
-        )
+        if args.resnet:
+            self.value_cnn = nn.Sequential(*list(resnet18(pretrained=False).children())[:-1])
+        else:
+            self.value_cnn = nn.Sequential(
+                nn.Conv2d(3, 32, kernel_size=9, stride=2, padding=3),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Conv2d(32, 64, kernel_size=5, stride=2, padding=3),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=2),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=2),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Flatten(),
+                nn.Dropout(),
+                nn.Linear(7680, 512),
+                nn.ReLU()
+            )
         self.value_linear = nn.Linear(512, 1)
         
         self.eval_mode()
@@ -159,7 +164,7 @@ class PPO:
 
         self.policy = ActorCritic(state_dim, action_dim).to(device)
         if load_saved:
-            self.policy.load_state_dict(torch.load('preTrained/meta_PPO.pth'.format(args.level)))
+            self.policy.load_state_dict(torch.load('preTrained/meta_PPO.pth'))
         
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
         
@@ -252,7 +257,11 @@ def main():
 
     if not args.dry_run:
         curr_time = str(datetime.datetime.now()).replace(' ', '_')
-        writer = SummaryWriter(log_dir='../runs/{}_{}_{}'.format(args.level, args.run_name, curr_time))
+        if args.resnet:
+            logdir = '../runs/{}_resnet_{}_{}'.format(args.level, args.run_name, curr_time)
+        else:
+            logdir = '../runs/{}_{}_{}'.format(args.level, args.run_name, curr_time)
+        writer = SummaryWriter(log_dir=logdir)
     
     if random_seed:
         torch.manual_seed(random_seed)
