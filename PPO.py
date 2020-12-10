@@ -245,7 +245,7 @@ def main():
     max_episodes = 500          # max training episodes
     max_timesteps = 3000        # max timesteps in one episode
     update_timestep = 9000      # update policy every n timesteps
-    lr = 0.00001
+    lr = 0.0001
     batch_size = 400            # 200 for ResNet, 400 for basic conv
     betas = (0.9, 0.999)
     gamma = 0.99                # discount factor
