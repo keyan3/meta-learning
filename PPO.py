@@ -50,8 +50,10 @@ class Memory:
         del self.is_terminals[:]
 
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim):
+    def __init__(self, state_dim, action_dim, eps_greedy=0.05):
         super(ActorCritic, self).__init__()
+
+        self.eps_greedy = eps_greedy
 
         #actor
         if args.resnet:
@@ -117,7 +119,7 @@ class ActorCritic(nn.Module):
     def act(self, state, memory):
         state = torch.from_numpy(state).float().permute(2, 0, 1).unsqueeze(dim=0).to(device)
 
-        if np.random.random() > 0.02:
+        if np.random.random() > self.eps_greedy:
             action_probs = self.forward_actor(state)
         else:
             action_values = np.random.random(size=8)
@@ -153,7 +155,8 @@ class ActorCritic(nn.Module):
 
 class PPO:
     def __init__(self, state_dim, action_dim, lr, betas, gamma, 
-                 K_epochs, eps_clip, net_batch_size, load_saved, entropy_loss_weight):
+                 K_epochs, eps_clip, net_batch_size, load_saved, 
+                 entropy_loss_weight, eps_greedy=0.05):
         self.lr = lr
         self.betas = betas
         self.gamma = gamma
@@ -162,13 +165,13 @@ class PPO:
         self.net_batch_size = net_batch_size
         self.entropy_loss_weight = entropy_loss_weight
 
-        self.policy = ActorCritic(state_dim, action_dim).to(device)
+        self.policy = ActorCritic(state_dim, action_dim, eps_greedy).to(device)
         if load_saved:
             self.policy.load_state_dict(torch.load('preTrained/meta_PPO.pth'))
         
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, betas=betas)
         
-        self.policy_old = ActorCritic(state_dim, action_dim).to(device)
+        self.policy_old = ActorCritic(state_dim, action_dim, eps_greedy).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
         
         self.MseLoss = nn.MSELoss()
@@ -252,6 +255,7 @@ def main():
     K_epochs = 1                # update policy for K epochs
     eps_clip = 0.2              # clip parameter for PPO
     entropy_loss_weight = 0.1   # weight for entropy term in loss
+    eps_greedy = 0.05
     random_seed = None
     #############################################
 
@@ -269,7 +273,7 @@ def main():
 
     memory = Memory()
     ppo = PPO(state_dim, action_dim, lr, betas, gamma, K_epochs, 
-              eps_clip, batch_size, args.load_saved, entropy_loss_weight)
+              eps_clip, batch_size, args.load_saved, entropy_loss_weight, eps_greedy)
     print(lr, betas)
     
     # logging variables
