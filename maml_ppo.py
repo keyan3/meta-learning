@@ -21,6 +21,7 @@ from sonic_util import get_sonic_specific_actions, sample_level_batch
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--run_name', type=str)
 parser.add_argument('--render', dest='render', action='store_true')
 parser.add_argument('--dry_run', dest='dry_run', action='store_true')
 args = parser.parse_args()
@@ -138,7 +139,7 @@ def train_meta_ppo(level, meta_policy):
     render = args.render
     log_interval = 1              # print avg reward in the interval
     num_episodes = 3              # max training episodes
-    max_timesteps = 1000          # max timesteps in one episode
+    max_timesteps = 3000          # max timesteps in one episode
     lr = 0.0001
     batch_size = 200
     betas = (0.9, 0.999)
@@ -203,7 +204,7 @@ def train_meta_ppo(level, meta_policy):
 def main():
     ############## Hyperparameters ##############
     meta_iterations = 80
-    meta_policy_lr = 0.001
+    meta_policy_lr = 0.00001
     #############################################
 
     if not args.dry_run:
