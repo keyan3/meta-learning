@@ -139,10 +139,10 @@ def train_meta_ppo(level, meta_policy):
     sonic_actions = get_sonic_specific_actions()
     render = args.render
     log_interval = 1              # print avg reward in the interval
-    num_episodes = 3              # max training episodes
-    max_timesteps = 3000          # max timesteps in one episode
+    num_episodes = 2              # max training episodes
+    max_timesteps = 4000          # max timesteps in one episode
     lr = 0.0001
-    batch_size = 200
+    batch_size = 50
     betas = (0.9, 0.999)
     gamma = 0.99                # discount factor
     K_epochs = 1                # update policy for K epochs
@@ -205,7 +205,7 @@ def train_meta_ppo(level, meta_policy):
 def main():
     ############## Hyperparameters ##############
     meta_iterations = 80
-    meta_policy_lr = 0.00001
+    meta_policy_lr = 0.0001
     #############################################
 
     if not args.dry_run:
@@ -213,9 +213,9 @@ def main():
         writer = SummaryWriter(log_dir='../runs/MAML_{}_{}'.format(args.run_name, curr_time))
 
     if args.resnet:
-        meta_policy = ActorCritic((224, 320, 3), 8, resnet_expl=True).to(device)
-    else:
         meta_policy = ActorCritic((224, 320, 3), 8, eps_greedy=0.02, resnet_expl=True).to(device)
+    else:
+        meta_policy = ActorCritic((224, 320, 3), 8).to(device)
 
     for i_metaiter in range(meta_iterations):
         
@@ -232,8 +232,6 @@ def main():
                 meta_gradient_total = gradadd(meta_gradient_total, gradient_wrt_theta)
             
             total_reward += post_update_reward
-        
-        print(meta_gradient_total)
 
         print('Updating meta-policy')
         with torch.no_grad():

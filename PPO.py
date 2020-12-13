@@ -246,16 +246,16 @@ def main():
     render = args.render
     log_interval = 1            # print avg reward in the interval
     max_episodes = 500          # max training episodes
-    max_timesteps = 3000        # max timesteps in one episode
+    max_timesteps = 4000        # max timesteps in one episode
     update_timestep = 9000      # update policy every n timesteps
-    lr = 0.0001
-    batch_size = 400            # 200 for ResNet, 400 for basic conv
+    lr = 0.00001
+    batch_size = 200            # 200 for ResNet, 400 for basic conv
     betas = (0.9, 0.999)
     gamma = 0.99                # discount factor
     K_epochs = 1                # update policy for K epochs
     eps_clip = 0.2              # clip parameter for PPO
     entropy_loss_weight = 0.1   # weight for entropy term in loss
-    eps_greedy = 0.05
+    eps_greedy = 0.02
     random_seed = None
     #############################################
 
