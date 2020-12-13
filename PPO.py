@@ -50,13 +50,13 @@ class Memory:
         del self.is_terminals[:]
 
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, eps_greedy=0.05):
+    def __init__(self, state_dim, action_dim, eps_greedy=0.05, resnet_expl=False):
         super(ActorCritic, self).__init__()
 
         self.eps_greedy = eps_greedy
 
         #actor
-        if args.resnet:
+        if args.resnet or resnet_expl:
             self.action_cnn = nn.Sequential(*list(resnet18(pretrained=False).children())[:-1])
         else:
             self.action_cnn = nn.Sequential(
@@ -80,7 +80,7 @@ class ActorCritic(nn.Module):
         self.action_linear = nn.Linear(512, action_dim)
         
         # critic
-        if args.resnet:
+        if args.resnet or resnet_expl:
             self.value_cnn = nn.Sequential(*list(resnet18(pretrained=False).children())[:-1])
         else:
             self.value_cnn = nn.Sequential(

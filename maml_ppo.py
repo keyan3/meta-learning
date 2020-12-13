@@ -23,6 +23,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 parser = argparse.ArgumentParser()
 parser.add_argument('--run_name', type=str)
 parser.add_argument('--render', dest='render', action='store_true')
+parser.add_argument('--resnet', dest='resnet', action='store_true')
 parser.add_argument('--dry_run', dest='dry_run', action='store_true')
 args = parser.parse_args()
 
@@ -211,7 +212,10 @@ def main():
         curr_time = str(datetime.datetime.now()).replace(' ', '_')
         writer = SummaryWriter(log_dir='../runs/MAML_{}_{}'.format(args.run_name, curr_time))
 
-    meta_policy = ActorCritic((224, 320, 3), 8).to(device)
+    if args.resnet:
+        meta_policy = ActorCritic((224, 320, 3), 8, resnet_expl=True).to(device)
+    else:
+        meta_policy = ActorCritic((224, 320, 3), 8, eps_greedy=0.02, resnet_expl=True).to(device)
 
     for i_metaiter in range(meta_iterations):
         
